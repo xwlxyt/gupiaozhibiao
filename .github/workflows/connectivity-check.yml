@@ -1,0 +1,77 @@
+name: 网络连通性探针（一次性）
+
+# 只在本文件自身变化时触发，避免与数据提交形成循环
+on:
+  push:
+    paths:
+      - ".github/workflows/connectivity-check.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 测试行情接口可达性
+        run: |
+          mkdir -p ci-report
+          OUT=ci-report/connectivity.txt
+          echo "探针时间(UTC): $(date -u '+%Y-%m-%d %H:%M:%S')" > $OUT
+          echo "运行节点: $RUNNER_NAME / $RUNNER_OS" >> $OUT
+          echo "出口 IP: $(curl -s -m 10 https://api.ipify.org || echo 未知)" >> $OUT
+          echo "" >> $OUT
+
+          probe() {
+            local label="$1" url="$2"
+            local body code t0 t1
+            t0=$(date +%s%N)
+            body=$(curl -s -m 25 -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0" \
+                   -H "Referer: https://quote.eastmoney.com/" -w "\n__CODE__%{http_code}" "$url" 2>&1) || true
+            t1=$(date +%s%N)
+            code=$(printf '%s' "$body" | sed -n 's/.*__CODE__\([0-9]*\)$/\1/p')
+            local ms=$(( (t1 - t0) / 1000000 ))
+            local head
+            head=$(printf '%s' "$body" | sed 's/__CODE__[0-9]*$//' | tr -d '\n' | head -c 160)
+            {
+              echo "### $label"
+              echo "HTTP: ${code:-000}  耗时: ${ms}ms"
+              echo "响应: ${head:-（空）}"
+              echo ""
+            } >> $OUT
+          }
+
+          probe "腾讯 proxy.finance.qq.com 日线" \
+            "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get?_var=k&param=sh600519,day,2026-10-01,2026-10-27,10,qfq"
+          probe "腾讯 web.ifzq.gtimg.cn 备用日线" \
+            "https://web.ifzq.gtimg.cn/appstock/app/newfqkline/get?_var=k&param=sh600519,day,2026-10-01,2026-10-27,10,qfq"
+          probe "腾讯 qt.gtimg.cn 实时快照" \
+            "https://qt.gtimg.cn/q=sh600519"
+          probe "腾讯 全A股列表接口" \
+            "https://proxy.finance.qq.com/cgi/cgi-bin/rank/hs/getBoardRankList?board_code=aStock&sort_type=price&direct=down&offset=0&count=5&_appver=11.17.0"
+          probe "东财 push2his 日线(备选源)" \
+            "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=1.600519&fields1=f1&fields2=f51,f52&klt=101&fqt=0&beg=20261001&end=20261027"
+          probe "新浪 hq.sinajs.cn(备选源)" \
+            "https://hq.sinajs.cn/list=sh600519"
+          probe "对照: GitHub API" \
+            "https://api.github.com/zen"
+
+          echo "== 判定摘要 ==" >> $OUT
+          (grep -c "^HTTP: 200" $OUT || true) | sed 's/^/返回 200 的接口数: /' >> $OUT
+          cat $OUT
+
+      - name: 提交探针结果
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f ci-report/connectivity.txt
+          if git diff --cached --quiet; then
+            echo "无变化"
+          else
+            git commit -m "ci: 连通性探针结果"
+            git push
+          fi
