@@ -40,17 +40,90 @@ GitHub 定时器  ──►  抓取沪深全部A股日线  ──►  写回数�
 
 ## 第 3 步：把代码推上去（本机执行一次）
 
-在这个文件夹（`astock-breadth`）里打开命令行，执行（把地址换成你自己的）：
+> 已经提交好了首版代码和 2014 年至今的全部历史数据，不需要重新回补。
 
-```bash
-git remote add origin https://github.com/你的用户名/astock-breadth.git
-git branch -M main
-git push -u origin main
+### 3.1 先确认一件事：这台电脑没有独立安装 Git
+
+实测本机 `PATH` 里没有 Git，`git` 命令只在 WorkBuddy 自带的 PortableGit 里存在。
+所以如果你自己打开 cmd / PowerShell 敲 `git`，会提示"不是内部或外部命令"。两条路：
+
+- **省事**：直接在对话里说"帮我推到 GitHub"，助手用内置 Git 执行（推荐）；
+- **自己来**：先装 [Git for Windows](https://git-scm.com/download/win)，装完右键文件夹 → **Open Git Bash here**。
+
+### 3.2 选通道：SSH 还是 HTTPS
+
+实测结果（同一台机器）：
+
+| 通道 | 连通性 | 认证方式 |
+|---|---|---|
+| `https://github.com/...` | **被拦（CONNECT 502）** | 弹窗登录 / PAT |
+| `git@github.com:22` | ✅ 通 | SSH 密钥 |
+| `ssh.github.com:443` | ✅ 通 | SSH 密钥 |
+
+**结论：用 SSH。** 本机已生成好密钥（`C:\Users\wei\.ssh\id_ed25519`），
+你只需要把下面这行公钥贴到 GitHub：
+
+```
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFbROdPMKkwNbckc+wQgOJC3uKzhMV92p1o5MemlHr1g astock-breadth@workbuddy
 ```
 
-首次推送会弹出 GitHub 登录窗口，按提示授权即可。
+粘贴位置：GitHub 右上角头像 → **Settings** → 左侧 **SSH and GPG keys** → **New SSH key**
+→ Title 随便写（例如 `我的电脑`）→ Key 粘贴上面那行 → **Add SSH key**。
 
-> 已经提交好了首版代码和 2014 年至今的全部历史数据，不需要重新回补。
+### 3.3 复制仓库地址
+
+建好仓库后，仓库页面点绿色 **Code** 按钮 → 选 **SSH** 标签 → 复制，形如：
+
+```
+git@github.com:你的用户名/astock-breadth.git
+```
+
+### 3.4 三条命令
+
+在 `astock-breadth` 文件夹里执行（地址换成你自己的）：
+
+```bash
+git remote add origin git@github.com:你的用户名/astock-breadth.git   # 关联远端
+git branch -M main                                                  # 分支 master → main
+git push -u origin main                                             # 推送并记住上游
+```
+
+- 第一条只做一次；`-u` 的意思是以后直接 `git push` 就行。
+- 推送内容约 3.5 MB（代码 + 2014 年至今全部历史数据 + 静态看板），几十秒完成。
+- 如果报 `Permission denied (publickey)`，说明公钥还没加、或加到了别的账号上。
+
+### 3.5 验证推成功了
+
+刷新仓库页面，应该看到：
+
+- 首页自动显示 `README.md` 的中文说明；
+- 文件列表里有 `data/`、`docs/`、`web/`、`.github/` 等，共 29 个文件；
+- 顶部 **Actions** 标签里出现一条叫「A股宽度 每日更新与推送」的 workflow（此时还没运行）。
+
+### 3.6 常见报错对照
+
+| 报错 | 原因 | 处理 |
+|---|---|---|
+| `remote origin already exists` | 之前配过远端 | `git remote set-url origin git@github.com:你的用户名/仓库名.git` |
+| `Permission denied (publickey)` | 公钥没加到 GitHub，或加错账号 | 重新复制 3.2 那行公钥，确认加到当前登录的账号下 |
+| `Repository not found` | 地址拼错，或仓库是别人的 | 回仓库页面重新复制地址 |
+| `CONNECT tunnel failed, response 502` | 走了 HTTPS 且被网络拦截 | 换成 `git@github.com:` 开头的 SSH 地址 |
+| `src refspec main does not match any` | 分支改名没执行 | 先 `git branch -M main` 再 push |
+| `failed to push some refs` / `non-fast-forward` | 远端已有内容（建仓库时勾了 README） | 建仓库时不要勾初始化；已勾的话先 `git pull --rebase origin main` |
+
+### 3.7 可选：把提交作者改成你自己
+
+当前两次提交的作者是占位值 `wei <wei@localhost>`，推到 GitHub 后不会关联你的头像。
+在意的话在推送**之前**执行（换成你的 GitHub 用户名和邮箱）：
+
+```bash
+git config user.name "你的名字"
+git config user.email "你的GitHub邮箱"
+git rebase --root --exec "git commit --amend --reset-author --no-edit"   # 重写全部提交的作者
+```
+
+然后再执行 3.4 的推送。如果已经推过了，末尾加 `--force` 重推一次
+（只有在没别人克隆这个仓库时才能这么做，现在正是这个时机）。
 
 ---
 
