@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>A股市场宽度 · TRIN 与涨跌分布</title>
+<script src="/vendor/echarts.min.js"></script>
+<style>
+  :root{
+    --bg:#f5f6f8; --card:#ffffff; --line:#e6e8ec; --text:#1d2129; --sub:#6b7280;
+    --up:#d93a3a; --down:#159a6b; --flat:#9aa0a6; --blue:#2f6feb; --purple:#6b5bd2;
+    --orange:#e8963c; --shadow:0 1px 2px rgba(16,24,40,.04),0 4px 14px rgba(16,24,40,.05);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1320px;margin:0 auto;padding:20px 20px 60px}
+  header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+  h1{font-size:20px;margin:0 0 4px;letter-spacing:.2px}
+  .sub{color:var(--sub);font-size:12.5px}
+  .sub b{color:var(--text);font-weight:600}
+  .btn{border:1px solid var(--line);background:#fff;color:var(--text);border-radius:8px;
+    padding:7px 13px;font-size:13px;cursor:pointer;transition:.15s;box-shadow:var(--shadow)}
+  .btn:hover{border-color:#c9ced6;transform:translateY(-1px)}
+  .btn.primary{background:#1d2129;color:#fff;border-color:#1d2129}
+  .btn.primary:hover{background:#000}
+  .btn[disabled]{opacity:.55;cursor:not-allowed;transform:none}
+
+  .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:14px}
+  @media(max-width:1100px){.kpis{grid-template-columns:repeat(2,1fr)}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;box-shadow:var(--shadow)}
+  .card .k{font-size:12.5px;color:var(--sub);display:flex;align-items:center;gap:6px}
+  .card .v{font-size:27px;font-weight:650;letter-spacing:-.5px;margin:6px 0 2px;
+    font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+  .card .m{font-size:12px;color:var(--sub);line-height:1.55}
+  .tag{display:inline-block;font-size:11px;padding:1.5px 7px;border-radius:20px;font-weight:600}
+  .tag.r{background:#fdecec;color:#c22f2f}.tag.g{background:#e7f6f0;color:#127a55}
+  .tag.b{background:#eaf1fe;color:#2257c8}.tag.n{background:#f0f1f4;color:#5b6270}
+  .bar{height:6px;border-radius:4px;background:#eef0f3;overflow:hidden;margin-top:8px;display:flex}
+  .bar i{display:block;height:100%}
+  .mini{display:flex;gap:10px;font-size:12px;margin-top:6px}
+  .mini span{font-variant-numeric:tabular-nums}
+
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    box-shadow:var(--shadow);margin-bottom:14px;overflow:hidden}
+  .panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+    padding:12px 16px;border-bottom:1px solid var(--line)}
+  .panel-head h2{font-size:14px;margin:0;font-weight:620}
+  .panel-head .hint{font-size:12px;color:var(--sub);font-weight:400;margin-left:8px}
+  .tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{border:0;background:#fff;padding:6px 11px;font-size:12.5px;color:var(--sub);cursor:pointer}
+  .seg button+button{border-left:1px solid var(--line)}
+  .seg button.on{background:#1d2129;color:#fff}
+  .seg button:hover:not(.on){background:#f3f4f6}
+  input[type=date]{border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12.5px;
+    color:var(--text);background:#fff;font-family:inherit}
+  #chart{width:100%;height:560px}
+
+  .qres{display:none;padding:14px 16px;gap:18px;flex-wrap:wrap;align-items:center;border-top:1px dashed var(--line)}
+  .qres.show{display:flex}
+  .qres .qv{font-size:22px;font-weight:650;font-variant-numeric:tabular-nums}
+  .qres .ql{font-size:12px;color:var(--sub)}
+
+  .tablewrap{max-height:420px;overflow:auto}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+  th,td{padding:7px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid #f0f1f4}
+  th{position:sticky;top:0;background:#fafbfc;color:var(--sub);font-weight:600;z-index:2;
+    border-bottom:1px solid var(--line)}
+  td:first-child,th:first-child{text-align:left;font-variant-numeric:normal}
+  tbody tr:hover td{background:#fafbfc}
+  tbody tr.hl td{background:#fff8e6}
+  .up{color:var(--up)}.down{color:var(--down)}.mut{color:var(--sub)}
+
+  footer{color:var(--sub);font-size:12px;line-height:1.9;padding:4px 2px}
+  footer b{color:#414855}
+  code{background:#eef0f3;padding:1px 5px;border-radius:5px;font-size:11.5px}
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);
+    background:#1d2129;color:#fff;padding:9px 16px;border-radius:9px;font-size:13px;opacity:0;
+    transition:.25s;pointer-events:none;z-index:99}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>A股市场宽度 · TRIN 与涨跌分布</h1>
+      <div class="sub" id="subline">加载中…</div>
+    </div>
+    <div class="tools">
+      <button class="btn" id="btnRefresh">更新数据</button>
+      <button class="btn primary" id="btnLatest">跳到最新</button>
+    </div>
+  </header>
+
+  <section class="kpis" id="kpis"></section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>走势图<span class="hint">上：上涨占比 vs 上证指数　下：TRIN（纵轴按 2%~98% 分位截断，可切对数）</span></h2>
+      <div class="tools">
+        <div class="seg" id="segScale">
+          <button data-log="0" class="on">线性</button>
+          <button data-log="1">对数</button>
+        </div>
+        <div class="seg" id="segRange">
+          <button data-n="22">近1月</button>
+          <button data-n="66">近3月</button>
+          <button data-n="250">近1年</button>
+          <button data-n="750">近3年</button>
+          <button data-n="0" class="on">全部</button>
+        </div>
+      </div>
+    </div>
+    <div id="chart"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>按日期查询</h2>
+      <div class="tools">
+        <input type="date" id="qDate" />
+        <button class="btn" id="btnQuery">查询该日</button>
+        <input type="date" id="qStart" /> <span class="mut" style="font-size:12px">至</span>
+        <input type="date" id="qEnd" />
+        <button class="btn" id="btnRange">查看区间</button>
+        <button class="btn" id="btnCsv">导出 CSV</button>
+      </div>
+    </div>
+    <div class="qres" id="qres"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>明细数据</h2>
+      <div class="tools"><span class="hint" id="tableHint"></span></div>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr>
+          <th>日期</th><th>TRIN</th><th>上涨占比</th><th>上涨</th><th>下跌</th><th>平盘</th>
+          <th>涨停</th><th>跌停</th><th>上涨成交额(亿)</th><th>下跌成交额(亿)</th><th>上证指数</th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <b>指标口径</b>（沪深两市 A 股，不含北交所；剔除当日停牌与新股上市首日）<br>
+    ① <b>TRIN</b> =（上涨家数 ÷ 下跌家数）÷（上涨成交额 ÷ 下跌成交额）× 100%，以百分比表示。<br>
+    &nbsp;&nbsp;&nbsp;机械含义：&gt;100% 表示上涨股的家数占比高于其成交额占比（涨势缺少量能确认）；&lt;100% 表示成交额更集中在上涨股。<br>
+    &nbsp;&nbsp;&nbsp;注意：极端值多出现在单边行情——千股跌停时下跌股被锁仓、成交萎缩，TRIN 反而走低；千股涨停时只有少数股票下跌，TRIN 会飙高。
+    因此高低极值更适合当作<b>情绪极值</b>参考，需结合上涨占比与指数位置一起看。<br>
+    ② <b>上涨占比</b> = 上涨家数 ÷ 当日有交易的全部 A 股家数 × 100%（含平盘股）。<br>
+    涨跌判断使用<b>前复权</b>收盘价，除权除息日不会被误判为下跌；成交额为当日真实成交金额。<br>
+    统计区间 <span id="footRange"></span>　数据来源：腾讯证券公开行情接口　本工具仅供研究参考，不构成投资建议。
+  </footer>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const state = { rows: [], meta: {}, filter: [], selected: null, refreshTimer: null,
+                trinLog: false, mode: null };
+const $ = (s) => document.querySelector(s);
+const fmt = (v, d = 2) => (v === null || v === undefined || Number.isNaN(v)) ? '—' : Number(v).toFixed(d);
+const num = (v) => (v === null || v === undefined) ? '—' : Number(v).toLocaleString('zh-CN');
+const yi = (v) => (v === null || v === undefined) ? '—' : Number(v).toFixed(1);
+
+function toast(msg) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._tm); t._tm = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+/* ------------------------------------------------------------ KPI 卡片 */
+function trinTag(v) {
+  if (v === null || v === undefined) return '<span class="tag n">—</span>';
+  if (v >= 300) return '<span class="tag r">极高</span>';
+  if (v >= 150) return '<span class="tag r">偏高</span>';
+  if (v >= 100) return '<span class="tag b">略高于100%</span>';
+  if (v >= 70)  return '<span class="tag b">均衡区</span>';
+  if (v >= 40)  return '<span class="tag n">偏低</span>';
+  return '<span class="tag g">极低</span>';
+}
+
+function renderKpis(row, rank) {
+  if (!row) return;
+  const total = row.total || 1;
+  const upPct = row.up / total * 100, dnPct = row.down / total * 100, flPct = row.flat / total * 100;
+  const amtTotal = (row.up_amt + row.down_amt + row.flat_amt) || 1;
+  const idxPrev = state.prevIdxClose;
+  const idxChg = (row.idx && idxPrev) ? (row.idx / idxPrev - 1) * 100 : null;
+  $('#kpis').innerHTML = `
+    <div class="card">
+      <div class="k">TRIN（成交额口径）${trinTag(row.trin)}</div>
+      <div class="v">${fmt(row.trin)}<span style="font-size:16px;font-weight:500">%</span></div>
+      <div class="m">10日均值 ${fmt(row.trin_ma10)}%　历史分位 ${rank && rank.trin_pct !== null ? rank.trin_pct + '%' : '—'}</div>
+    </div>
+    <div class="card">
+      <div class="k">上涨家数占比</div>
+      <div class="v" style="color:${row.ratio >= 50 ? 'var(--up)' : 'var(--down)'}">${fmt(row.ratio)}<span style="font-size:16px;font-weight:500">%</span></div>
+      <div class="bar">
+        <i style="width:${upPct}%;background:var(--up)"></i>
+        <i style="width:${flPct}%;background:var(--flat)"></i>
+        <i style="width:${dnPct}%;background:var(--down)"></i>
+      </div>
+      <div class="m" style="margin-top:6px">${num(row.up)} 涨 / ${num(row.down)} 跌 / ${num(row.flat)} 平　共 ${num(row.total)} 只</div>
+    </div>
+    <div class="card">
+      <div class="k">涨跌家数对比</div>
+      <div class="v"><span class="up">${num(row.up)}</span><span style="font-size:16px;color:#c9ced6;margin:0 6px">/</span><span class="down">${num(row.down)}</span></div>
+      <div class="m">涨跌比 ${row.down ? (row.up / row.down).toFixed(2) : '—'}　涨停 ${num(row.lu)} · 跌停 ${num(row.ld)}</div>
+    </div>
+    <div class="card">
+      <div class="k">涨跌成交额（亿元）</div>
+      <div class="v"><span class="up">${yi(row.up_amt)}</span><span style="font-size:16px;color:#c9ced6;margin:0 6px">/</span><span class="down">${yi(row.down_amt)}</span></div>
+      <div class="m">两市成交 ${yi(amtTotal)} 亿　上涨占额 ${fmt(row.up_amt / amtTotal * 100, 1)}%</div>
+    </div>
+    <div class="card">
+      <div class="k">上证指数</div>
+      <div class="v" style="color:${idxChg === null ? 'inherit' : (idxChg >= 0 ? 'var(--up)' : 'var(--down)')}">${fmt(row.idx)}</div>
+      <div class="m">${idxChg === null ? '—' : (idxChg >= 0 ? '+' : '') + idxChg.toFixed(2) + '%'}　数据日期 ${row.date}</div>
+    </div>`;
+}
+
+/* ------------------------------------------------------------ 图表 */
+const chart = echarts.init($('#chart'), null, { renderer: 'canvas' });
+const C = { up: '#d93a3a', down: '#159a6b', blue: '#2f6feb', purple: '#6b5bd2', orange: '#e8963c' };
+
+/* TRIN 是比值，极端日（如千股涨停）会飙到 2000%+，线性坐标会被压扁：
+   默认按 2%~98% 分位截断纵轴，另提供对数坐标切换。 */
+function quantile(arr, p) {
+  const v = arr.filter(x => x !== null && x !== undefined && x > 0).slice().sort((a, b) => a - b);
+  if (!v.length) return null;
+  return v[Math.min(v.length - 1, Math.max(0, Math.round(p * (v.length - 1))))];
+}
+
+function buildOption(rows, zoom) {
+  const dates = rows.map(r => r.date);
+  const ratio = rows.map(r => r.ratio);
+  const trin = rows.map(r => r.trin);
+  const ma10 = rows.map(r => r.trin_ma10);
+  const idx = rows.map(r => r.idx);
+  const useLog = !!state.trinLog;
+  const trinAxis = { type: useLog ? 'log' : 'value', gridIndex: 1, name: 'TRIN', scale: true,
+    nameTextStyle: { color: '#9aa0a6', fontSize: 11, padding: [0, 0, 4, -8] },
+    splitLine: { lineStyle: { color: '#f2f3f5' } },
+    axisLabel: { color: '#9aa0a6', fontSize: 11, formatter: '{value}%' } };
+  if (!useLog) {
+    let lo = quantile(trin, 0.02), hi = quantile(trin, 0.98);
+    if (lo !== null && hi !== null && hi > lo) {
+      lo = Math.max(0, Math.min(lo, 95) - 5);
+      hi = Math.max(hi, 110) + 5;
+      trinAxis.min = Math.floor(lo);
+      trinAxis.max = Math.ceil(hi);
+    }
+  }
+  return {
+    animation: false,
+    backgroundColor: '#fff',
+    grid: [
+      { left: 62, right: 66, top: 40, height: 200 },
+      { left: 62, right: 66, top: 300, height: 170 }
+    ],
+    axisPointer: { link: [{ xAxisIndex: 'all' }], label: { backgroundColor: '#1d2129' } },
+    tooltip: {
+      trigger: 'axis', backgroundColor: 'rgba(255,255,255,.97)', borderColor: '#e6e8ec',
+      borderWidth: 1, textStyle: { color: '#1d2129', fontSize: 12.5 }, padding: [8, 12],
+      axisPointer: { type: 'cross', crossStyle: { color: '#c9ced6' }, lineStyle: { color: '#c9ced6' } },
+      formatter(ps) {
+        const i = ps[0].dataIndex, r = rows[i];
+        const chg = (i > 0 && rows[i - 1].idx) ? ((r.idx / rows[i - 1].idx - 1) * 100) : null;
+        return `<div style="font-weight:650;margin-bottom:5px">${r.date}</div>
+          <div style="line-height:1.85;font-variant-numeric:tabular-nums">
+          TRIN &nbsp;<b style="color:${C.blue}">${fmt(r.trin)}%</b>　<span style="color:#6b7280">(10日均 ${fmt(r.trin_ma10)}%)</span><br>
+          上涨占比 &nbsp;<b style="color:${r.ratio >= 50 ? C.up : C.down}">${fmt(r.ratio)}%</b><br>
+          涨 / 跌 / 平 &nbsp;<b>${r.up} / ${r.down} / ${r.flat}</b><br>
+          成交额 &nbsp;上涨 ${yi(r.up_amt)}亿 / 下跌 ${yi(r.down_amt)}亿<br>
+          上证指数 &nbsp;<b>${fmt(r.idx)}</b>${chg === null ? '' : ` <span style="color:${chg >= 0 ? C.up : C.down}">${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%</span>`}
+          </div>`;
+      }
+    },
+    xAxis: [
+      { type: 'category', gridIndex: 0, data: dates, boundaryGap: true,
+        axisLine: { lineStyle: { color: '#e6e8ec' } }, axisLabel: { show: false }, axisTick: { show: false } },
+      { type: 'category', gridIndex: 1, data: dates, boundaryGap: true,
+        axisLine: { lineStyle: { color: '#e6e8ec' } },
+        axisLabel: { color: '#9aa0a6', fontSize: 11 }, axisTick: { show: false } }
+    ],
+    yAxis: [
+      { type: 'value', gridIndex: 0, name: '上涨占比', nameTextStyle: { color: '#9aa0a6', fontSize: 11, padding: [0, 0, 4, -8] },
+        min: 0, max: 100, splitLine: { lineStyle: { color: '#f2f3f5' } },
+        axisLabel: { color: '#9aa0a6', fontSize: 11, formatter: '{value}%' } },
+      { type: 'value', gridIndex: 0, name: '上证指数', scale: true, nameTextStyle: { color: '#9aa0a6', fontSize: 11, padding: [0, -8, 4, 0] },
+        splitLine: { show: false }, axisLabel: { color: '#9aa0a6', fontSize: 11 } },
+      trinAxis
+    ],
+    dataZoom: [
+      { type: 'inside', xAxisIndex: [0, 1], startValue: zoom.startValue, endValue: zoom.endValue, minValueSpan: 10 },
+      { type: 'slider', xAxisIndex: [0, 1], height: 22, bottom: 16, borderColor: '#e6e8ec',
+        fillerColor: 'rgba(47,111,235,.10)', handleStyle: { color: '#fff', borderColor: '#c9ced6' },
+        dataBackground: { lineStyle: { color: '#d6dae1' }, areaStyle: { color: '#f2f3f5' } },
+        textStyle: { color: '#9aa0a6', fontSize: 10 },
+        startValue: zoom.startValue, endValue: zoom.endValue }
+    ],
+    series: [
+      { name: '上涨占比', type: 'bar', xAxisIndex: 0, yAxisIndex: 0, data: ratio, barMaxWidth: 7,
+        itemStyle: { color: (p) => p.value >= 50 ? 'rgba(217,58,58,.72)' : 'rgba(21,154,107,.62)',
+                     borderRadius: [2, 2, 0, 0] }, z: 2 },
+      { name: '上证指数', type: 'line', xAxisIndex: 0, yAxisIndex: 1, data: idx,
+        showSymbol: false, lineStyle: { width: 1.5, color: C.purple }, itemStyle: { color: C.purple }, z: 3 },
+      { name: 'TRIN', type: 'line', xAxisIndex: 1, yAxisIndex: 2, data: trin,
+        showSymbol: false, lineStyle: { width: 1.4, color: C.blue }, itemStyle: { color: C.blue },
+        areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgba(47,111,235,.18)' }, { offset: 1, color: 'rgba(47,111,235,0)' }]) },
+        markLine: { silent: true, symbol: 'none',
+          label: { formatter: '100%', color: '#9aa0a6', fontSize: 10, position: 'insideEndTop' },
+          lineStyle: { color: '#c9ced6', type: 'dashed', width: 1 }, data: [{ yAxis: 100 }] }, z: 3 },
+      { name: 'TRIN 10日均', type: 'line', xAxisIndex: 1, yAxisIndex: 2, data: ma10,
+        showSymbol: false, lineStyle: { width: 1.2, color: C.orange, type: 'dashed' },
+        itemStyle: { color: C.orange }, z: 4 }
+    ]
+  };
+}
+
+function renderChart() {
+  const rows = state.filter;
+  if (!rows.length) return;
+  const n = state.zoomCount || 0;
+  const zoom = n > 0 && n < rows.length
+    ? { startValue: rows.length - n, endValue: rows.length - 1 }
+    : { startValue: 0, endValue: rows.length - 1 };
+  chart.setOption(buildOption(rows, zoom), true);
+}
+
+function setZoom(n) {
+  state.zoomCount = n;
+  const rows = state.filter;
+  const z = n > 0 && n < rows.length ? { startValue: rows.length - n, endValue: rows.length - 1 }
+                                     : { startValue: 0, endValue: rows.length - 1 };
+  chart.dispatchAction({ type: 'dataZoom', dataZoomIndex: 0, ...z });
+  chart.dispatchAction({ type: 'dataZoom', dataZoomIndex: 1, ...z });
+}
+
+/* ------------------------------------------------------------ 表格 */
+function renderTable(rows, highlight) {
+  const show = rows.slice(-400).reverse();
+  $('#tableHint').textContent = `显示 ${show.length} / ${rows.length} 条（近 400 条，倒序）`;
+  $('#tbody').innerHTML = show.map(r => `
+    <tr class="${r.date === highlight ? 'hl' : ''}">
+      <td>${r.date}</td>
+      <td style="color:${r.trin > 100 ? 'var(--up)' : 'var(--down)'}">${fmt(r.trin)}%</td>
+      <td style="color:${r.ratio >= 50 ? 'var(--up)' : 'var(--down)'}">${fmt(r.ratio)}%</td>
+      <td class="up">${num(r.up)}</td>
+      <td class="down">${num(r.down)}</td>
+      <td class="mut">${num(r.flat)}</td>
+      <td class="up">${num(r.lu)}</td>
+      <td class="down">${num(r.ld)}</td>
+      <td>${yi(r.up_amt)}</td>
+      <td>${yi(r.down_amt)}</td>
+      <td class="mut">${fmt(r.idx)}</td>
+    </tr>`).join('');
+}
+
+/* ------------------------------------------------------------ 数据加载 */
+/* 两种模式：本机服务有 /api 接口；GitHub Pages 等静态托管则读 ./data/series.json */
+async function detectMode() {
+  if (state.mode) return state.mode;
+  try {
+    const r = await fetch('/api/meta', { cache: 'no-store' });
+    state.mode = r.ok ? 'live' : 'static';
+  } catch (e) {
+    state.mode = 'static';
+  }
+  if (state.mode === 'static') {
+    document.body.classList.add('static-mode');
+    const b = $('#btnRefresh');
+    if (b) b.style.display = 'none';
+  }
+  return state.mode;
+}
+
+/* 静态模式下本地复刻 /api/day：取当日行 + 计算历史分位 */
+function localDay(day) {
+  const rows = state.rows;
+  const i = rows.findIndex(r => r.date === day);
+  if (i < 0) return { ok: false, error: '该日期没有数据' };
+  const pct = (vals, x) => {
+    const v = vals.filter(y => y !== null && y !== undefined);
+    if (!v.length || x === null || x === undefined) return null;
+    return Math.round(v.filter(y => y <= x).length / v.length * 1000) / 10;
+  };
+  const row = rows[i];
+  return { ok: true, row, prev: rows[i - 1] || null,
+    rank: { trin_pct: pct(rows.map(r => r.trin), row.trin),
+            ratio_pct: pct(rows.map(r => r.ratio), row.ratio),
+            samples: rows.length } };
+}
+
+async function loadAll() {
+  const mode = await detectMode();
+  let meta, series;
+  if (mode === 'live') {
+    meta = await (await fetch('/api/meta')).json();
+    series = await (await fetch('/api/series')).json();
+  } else {
+    series = await (await fetch('./data/series.json', { cache: 'no-store' })).json();
+    meta = { ok: true, meta: series.meta, latest: series.rows[series.rows.length - 1] };
+  }
+  state.rows = series.rows;
+  state.meta = meta.meta || {};
+  state.filter = state.rows.slice();
+  const latest = state.rows[state.rows.length - 1];
+  state.prevIdxClose = state.rows.length > 1 ? state.rows[state.rows.length - 2].idx : null;
+
+  $('#subline').innerHTML = `统计区间 <b>${state.meta.first || '—'}</b> ~ <b>${state.meta.last || '—'}</b>
+     · 共 <b>${state.meta.count || 0}</b> 个交易日 · 覆盖 <b>${latest ? latest.total : 0}</b> 只沪深A股
+     · 更新于 ${state.meta.updated_at || '—'}`;
+  $('#footRange').textContent = `${state.meta.first || '—'} ~ ${state.meta.last || '—'}`;
+  $('#qDate').value = state.meta.last || '';
+  $('#qStart').value = state.rows[Math.max(0, state.rows.length - 60)]?.date || '';
+  $('#qEnd').value = state.meta.last || '';
+
+  renderKpis(latest, null);
+  state.zoomCount = 250;
+  renderChart();
+  renderTable(state.rows, state.meta.last);
+  try {
+    const d = state.mode === 'static'
+      ? localDay(state.meta.last)
+      : await (await fetch('/api/day?date=' + state.meta.last)).json();
+    if (d.ok) renderKpis(d.row, d.rank);
+  } catch (e) { /* ignore */ }
+}
+
+/* ------------------------------------------------------------ 交互 */
+$('#segRange').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  [...$('#segRange').children].forEach(x => x.classList.toggle('on', x === b));
+  if (state.filter.length !== state.rows.length) {   // 先恢复到全量再缩放
+    state.filter = state.rows.slice();
+    renderChart();
+    renderTable(state.rows, state.selected);
+  }
+  setZoom(Number(b.dataset.n));
+});
+
+$('#segScale').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  [...$('#segScale').children].forEach(x => x.classList.toggle('on', x === b));
+  state.trinLog = b.dataset.log === '1';
+  const opt = chart.getOption() || {};
+  const z = (opt.dataZoom && opt.dataZoom[0]) || null;
+  renderChart();
+  if (z && z.start !== undefined) chart.dispatchAction({ type: 'dataZoom', dataZoomIndex: [0, 1],
+    start: z.start, end: z.end });
+});
+
+$('#btnLatest').onclick = () => {
+  $('#qDate').value = state.meta.last;
+  setZoom(250);
+  queryDay(state.meta.last);
+};
+
+async function queryDay(day) {
+  if (!day) return;
+  const mode = await detectMode();
+  const res = mode === 'static'
+    ? localDay(day)
+    : await (await fetch('/api/day?date=' + day)).json();
+  const box = $('#qres');
+  if (!res.ok) { box.classList.remove('show'); toast(res.error || '未找到数据'); return; }
+  state.selected = day;
+  const r = res.row, p = res.prev || {};
+  const chg = (r.idx && p.idx) ? (r.idx / p.idx - 1) * 100 : null;
+  box.classList.add('show');
+  box.innerHTML = `
+    <div><div class="ql">日期</div><div class="qv">${r.date}</div></div>
+    <div><div class="ql">TRIN</div><div class="qv" style="color:${r.trin > 100 ? 'var(--up)' : 'var(--down)'}">${fmt(r.trin)}%</div>
+      <div class="ql">历史分位 ${res.rank.trin_pct ?? '—'}%</div></div>
+    <div><div class="ql">上涨占比</div><div class="qv" style="color:${r.ratio >= 50 ? 'var(--up)' : 'var(--down)'}">${fmt(r.ratio)}%</div>
+      <div class="ql">历史分位 ${res.rank.ratio_pct ?? '—'}%</div></div>
+    <div><div class="ql">涨 / 跌 / 平</div><div class="qv"><span class="up">${r.up}</span> / <span class="down">${r.down}</span> / <span class="mut">${r.flat}</span></div>
+      <div class="ql">共 ${r.total} 只 · 涨停 ${r.lu} · 跌停 ${r.ld}</div></div>
+    <div><div class="ql">上涨/下跌成交额</div><div class="qv">${yi(r.up_amt)} / ${yi(r.down_amt)} 亿</div>
+      <div class="ql">${r.up_amt + r.down_amt > 0 ? '成交额比 ' + (r.up_amt / r.down_amt || 0).toFixed(2) : ''}</div></div>
+    <div><div class="ql">上证指数</div><div class="qv">${fmt(r.idx)}</div>
+      <div class="ql">${chg === null ? '' : (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%'}</div></div>
+    <div><div class="ql">TRIN 10日均</div><div class="qv">${fmt(r.trin_ma10)}%</div>
+      <div class="ql">上涨占比5日均 ${fmt(r.ratio_ma5)}%</div></div>`;
+  // 把图表窗口移到该日附近
+  const idx = state.filter.findIndex(x => x.date === day);
+  if (idx >= 0) {
+    const half = 40;
+    const s = Math.max(0, idx - half), e = Math.min(state.filter.length - 1, idx + half);
+    chart.dispatchAction({ type: 'dataZoom', dataZoomIndex: 0, startValue: s, endValue: e });
+    chart.dispatchAction({ type: 'dataZoom', dataZoomIndex: 1, startValue: s, endValue: e });
+  }
+  renderTable(state.filter, day);
+  document.querySelectorAll('#segRange button').forEach(b => b.classList.remove('on'));
+}
+
+$('#btnQuery').onclick = () => queryDay($('#qDate').value);
+
+$('#btnRange').onclick = async () => {
+  const s = $('#qStart').value, e = $('#qEnd').value;
+  if (!s || !e) return toast('请选择起止日期');
+  const mode = await detectMode();
+  const res = mode === 'static'
+    ? { rows: state.rows.filter(r => r.date >= s && r.date <= e) }
+    : await (await fetch(`/api/series?start=${s}&end=${e}`)).json();
+  if (!res.rows.length) return toast('该区间没有数据');
+  state.filter = res.rows;
+  renderChart(); renderTable(res.rows, state.selected);
+  document.querySelectorAll('#segRange button').forEach(b => b.classList.toggle('on', b.dataset.n === '0'));
+  toast(`已切换到 ${s} ~ ${e}（${res.rows.length} 个交易日）`);
+};
+
+$('#btnCsv').onclick = () => {
+  const rows = state.filter;
+  const head = ['日期', 'TRIN(%)', '上涨占比(%)', '上涨家数', '下跌家数', '平盘家数',
+                '涨停', '跌停', '上涨成交额(亿元)', '下跌成交额(亿元)', '上证指数'];
+  const lines = [head.join(',')].concat(rows.map(r => [
+    r.date, fmt(r.trin), fmt(r.ratio), r.up, r.down, r.flat, r.lu, r.ld,
+    yi(r.up_amt), yi(r.down_amt), fmt(r.idx)
+  ].join(',')));
+  const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `A股宽度_${rows[0].date}_${rows[rows.length - 1].date}.csv`;
+  a.click(); URL.revokeObjectURL(a.href);
+  toast('已导出 ' + rows.length + ' 条');
+};
+
+$('#btnRefresh').onclick = async () => {
+  if (state.mode === 'static') {
+    return toast('这是每日自动更新的静态页面，数据由云端定时刷新');
+  }
+  const btn = $('#btnRefresh');
+  btn.disabled = true; btn.textContent = '正在更新…';
+  const res = await (await fetch('/api/refresh', { method: 'POST' })).json();
+  if (!res.ok) { toast(res.error || '更新失败'); btn.disabled = false; btn.textContent = '更新数据'; return; }
+  toast('已开始抓取最新行情，约需 1~3 分钟');
+  clearInterval(state.refreshTimer);
+  state.refreshTimer = setInterval(async () => {
+    const st = await (await fetch('/api/status')).json();
+    if (!st.refreshing) {
+      clearInterval(state.refreshTimer);
+      btn.disabled = false; btn.textContent = '更新数据';
+      await loadAll();
+      toast('数据已更新');
+    }
+  }, 4000);
+};
+
+window.addEventListener('resize', () => chart.resize());
+loadAll();
+</script>
+</body>
+</html>

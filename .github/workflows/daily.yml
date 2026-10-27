@@ -1,0 +1,49 @@
+name: A股宽度 每日更新与推送
+
+on:
+  schedule:
+    # UTC 08:40 = 北京时间 16:40，收盘（15:00）后数据已稳定；GitHub 定时任务通常延迟几分钟
+    - cron: "40 8 * * 1-5"
+  workflow_dispatch: {}      # 支持在网页上手动点一下立即运行
+
+permissions:
+  contents: write            # 需要把更新后的数据提交回仓库
+
+concurrency:
+  group: a-stock-breadth-daily
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 准备 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 更新数据并推送
+        env:
+          BARK_KEY: ${{ secrets.BARK_KEY }}
+          SERVERCHAN_KEY: ${{ secrets.SERVERCHAN_KEY }}
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+        run: python cloud_job.py
+
+      - name: 生成静态看板
+        run: python export_static.py
+
+      - name: 提交数据与页面
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A data docs
+          if git diff --cached --quiet; then
+            echo "数据无变化，跳过提交"
+          else
+            git commit -m "chore: 更新数据 $(date -u +%Y-%m-%d)"
+            git push
+          fi

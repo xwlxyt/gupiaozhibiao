@@ -1,0 +1,31 @@
+{
+  "date": "2026-10-27",
+  "text": "【A股市场宽度】2026-10-27\n\nTRIN：46.60%（10日均 84.34%，历史分位 11.1%）\n上涨占比：11.04%（历史分位 4.8%）\n涨跌家数：上涨 576 / 下跌 4601 / 平盘 40（共 5217 只）\n涨跌停：涨停 45 / 跌停 39\n成交额：上涨股 3076.7 亿 / 下跌股 11453.5 亿，两市合计 14608.2 亿\n上证指数：3648.30（-1.33%）\n\n解读：市场普跌，TRIN 偏低，成交额更多流向上涨股；家数与量能出现一定背离，建议结合指数位置和后续量能变化观察。\n（口径：沪深两市 A 股，剔除停牌与新股首日；TRIN =（涨家数/跌家数）÷（涨成交额/跌成交额）×100%）",
+  "html": "<div style=\"font-family:system-ui,'Microsoft YaHei',sans-serif;max-width:620px\">\n<h3 style=\"margin:0 0 4px\">A股市场宽度 · 2026-10-27</h3>\n<table cellpadding=\"7\" style=\"border-collapse:collapse;font-size:14px;width:100%\">\n<tr style=\"background:#fafbfc\"><td>TRIN</td><td style=\"text-align:right;font-weight:600\">46.60%</td>\n<td style=\"color:#6b7280\">10日均 84.34% · 分位 11.1%</td></tr>\n<tr><td>上涨占比</td><td style=\"text-align:right;font-weight:600;color:#159a6b\">11.04%</td>\n<td style=\"color:#6b7280\">历史分位 4.8%</td></tr>\n<tr style=\"background:#fafbfc\"><td>涨跌家数</td><td style=\"text-align:right\"><span style=\"color:#d93a3a\">576 涨</span> / <span style=\"color:#159a6b\">4601 跌</span> / 40 平</td>\n<td style=\"color:#6b7280\">涨停 45 · 跌停 39</td></tr>\n<tr><td>成交额</td><td style=\"text-align:right\">3076.7 / 11453.5 亿</td>\n<td style=\"color:#6b7280\">两市 14608.2 亿</td></tr>\n<tr style=\"background:#fafbfc\"><td>上证指数</td><td style=\"text-align:right;font-weight:600\">3648.30</td>\n<td style=\"color:#159a6b\">-1.33%</td></tr>\n</table>\n<p style=\"color:#444;line-height:1.7;font-size:13.5px;margin-top:12px\">解读：市场普跌，TRIN 偏低，成交额更多流向上涨股；家数与量能出现一定背离，建议结合指数位置和后续量能变化观察。</p>\n<p style=\"color:#9aa0a6;font-size:12px\">口径：沪深两市 A 股，剔除当日停牌与新股上市首日；TRIN =（上涨家数/下跌家数）÷（上涨成交额/下跌成交额）×100%。仅作研究参考。</p>\n</div>",
+  "subject": "[A股宽度] 2026-10-27 TRIN 46.60% · 上涨占比 11.04% · 涨576跌4601",
+  "row": {
+    "date": "2026-10-27",
+    "up_cnt": 576,
+    "down_cnt": 4601,
+    "flat_cnt": 40,
+    "total_cnt": 5217,
+    "up_amt": 307667526600.0,
+    "down_amt": 1145354979600.0,
+    "flat_amt": 7798343100.0,
+    "up_vol": 87075951500.0,
+    "down_vol": 419540787400.0,
+    "flat_vol": 1079137900.0,
+    "limit_up": 45,
+    "limit_down": 39,
+    "trin_pct": 46.6045907148272,
+    "up_ratio": 11.040828062104657,
+    "idx_close": 3648.3,
+    "updated_at": "2026-10-27 20:37:04",
+    "trin_ma10": 84.34,
+    "ratio_ma5": 35.43
+  },
+  "trin_rank": 11.1,
+  "ratio_rank": 4.8,
+  "trin_txt": "46.60%",
+  "ratio_txt": "11.04%"
+}
