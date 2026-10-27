@@ -21,6 +21,11 @@ python update_daily.py
 
 # 4) 生成当日简报（供推送）
 python notify.py            # 加 --json 供程序读取，加 --notify 同时弹桌面通知
+
+# 5) 云端部署（电脑关机也能每天更新并推送到手机）
+#    见 DEPLOY_CLOUD.md；日常由 GitHub Actions 自动执行
+python cloud_job.py         # 云端任务入口，本机也可直接跑
+python export_static.py     # 生成 docs/ 静态看板（GitHub Pages 用）
 ```
 
 Windows 下双击即可：`启动看板.bat`、`更新数据.bat`。
@@ -28,7 +33,7 @@ Windows 下双击即可：`启动看板.bat`、`更新数据.bat`。
 > 数据接口（腾讯证券）对高并发敏感，`qq.py` 内置全局限速（约 9 请求/秒）与自适应退避；
 > 首次回补 5224 只股票 × 约 5 段历史 ≈ 2 万多次请求，耗时 30~40 分钟，中断后重跑会从断点继续。
 
-当前数据：**2014-01-02 ~ 2026-10-26，共 3113 个交易日**。
+当前数据：**2014-01-02 ~ 2026-10-27，共 3114 个交易日**。
 
 ## 目录结构
 
@@ -40,9 +45,14 @@ astock-breadth/
 ├── build_history.py   全量回补（断点续跑）
 ├── update_daily.py    增量更新（重叠回看重算，自愈补漏）
 ├── notify.py          当日简报（文本 + HTML）
+├── push.py            推送通道（Bark / Server酱 / PushPlus）
+├── cloud_job.py       云端每日任务入口（更新→简报→推送→摘要）
+├── export_static.py   导出静态看板到 docs/（GitHub Pages 用）
 ├── server.py          本地 Web 服务（标准库，无第三方依赖）
-├── web/index.html     看板页面（ECharts 已本地化，可离线）
+├── web/index.html     看板页面（ECharts 已本地化，可离线；兼容静态托管）
 ├── web/vendor/        echarts.min.js
+├── docs/              静态版看板（云端自动生成，手机可访问）
+├── .github/workflows/ GitHub Actions 定时任务
 └── data/
     ├── breadth.db     SQLite 主库
     ├── daily.csv      导出明细（Excel 可直接打开）
@@ -61,16 +71,43 @@ astock-breadth/
 
 ## 每日自动更新与推送
 
-已配置定时任务 **「A股市场宽度指标 每日更新与推送」**：每周一至周五 **16:30** 自动执行
+### 方式一：本机（WorkBuddy 定时任务）
 
-1. 运行 `update_daily.py`，把最新交易日补进数据库（回看 30 个交易日，漏跑也会自动补上）；
-2. 运行 `notify.py` 生成简报；
-3. 在对话中推送当日 TRIN、上涨占比、涨跌家数、成交额与一句话解读（`--notify` 同时弹 Windows 桌面通知）。
+定时任务 **「A股市场宽度指标 每日更新与推送」**：每周一至周五 **16:30** 自动执行。
+依赖这台电脑开机；关机、休眠、断网时不会运行。
+
+### 方式二：云端（电脑关机也能跑）★ 推荐
+
+搬到 GitHub Actions 免费服务器，每个交易日北京时间 **16:40** 自动更新并推送到手机，
+数据写回仓库，同时更新静态看板（GitHub Pages）。**完整步骤见 [DEPLOY_CLOUD.md](DEPLOY_CLOUD.md)**。
+
+三条命令说明全部：
+
+```bash
+python cloud_job.py        # 云端入口：更新数据 → 简报 → 推送（非交易日自动跳过）
+python push.py --test      # 单独测试推送通道是否通
+python export_static.py    # 重新生成 docs/ 静态看板
+```
+
+推送通道用环境变量配置（GitHub Secrets 同名）：
+
+| 变量 | 说明 |
+|---|---|
+| `BARK_KEY` | Bark 的 key（iPhone） |
+| `SERVERCHAN_KEY` | Server酱 SendKey（微信） |
+| `PUSHPLUS_TOKEN` | PushPlus token（微信） |
+
+本机测试时也可以写进 `data/push.json`（该文件已在 .gitignore 中，不会被提交）：
+
+```json
+{"bark_key": "你的key", "serverchan_key": "", "pushplus_token": ""}
+```
 
 非交易日会自动判定并跳过，不会重复推送。
 
 > 安全阀：若某天抓取到的样本家数明显低于库中已有值（如接口大面积失败），该日会保留原值不被覆盖；
 > 增量更新只重算最近 25 个交易日，写入前严格截断，不会污染历史数据。
+> 行情接口另有备用域名回退，股票列表接口异常时自动改用上次缓存，避免整次任务失败。
 
 ## 数据库表
 

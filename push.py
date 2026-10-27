@@ -49,8 +49,7 @@ def _post_json(url, payload, timeout=15):
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(url, data=body, method="POST",
                                  headers={**UA, "Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read().decode("utf-8", "ignore")
+    return _read(req, timeout)
 
 
 def _post_form(url, fields, timeout=15):
@@ -58,8 +57,17 @@ def _post_form(url, fields, timeout=15):
     req = urllib.request.Request(url, data=body, method="POST",
                                  headers={**UA,
                                           "Content-Type": "application/x-www-form-urlencoded"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read().decode("utf-8", "ignore")
+    return _read(req, timeout)
+
+
+def _read(req, timeout):
+    """读取响应；4xx/5xx 时把服务端返回的原因带出来，便于排查 key 写错等问题。"""
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.read().decode("utf-8", "ignore")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "ignore").strip()[:200]
+        raise RuntimeError(f"HTTP {exc.code}：{detail or exc.reason}") from exc
 
 
 # ---------------------------------------------------------------- 各通道
