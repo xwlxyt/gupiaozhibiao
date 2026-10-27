@@ -26,32 +26,44 @@ jobs:
           mkdir -p ci-report
           { echo "Python: $(python -V 2>&1)"
             echo "时间(UTC): $(date -u '+%Y-%m-%d %H:%M:%S')"
-            echo "时区: $(date '+%Z %z')"
-            echo "北京日期: TZ=Asia/Shanghai date -> $(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M')"
+            echo "北京日期: $(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M')"
             echo "出口IP: $(curl -s -m 10 https://api.ipify.org || echo 未知)"
             echo "---"
           } > ci-report/dryrun.txt
 
-      - name: 运行云端任务（真实抓取全市场）
+      - name: 强制重算（真实抓取全市场）
         run: |
           set -o pipefail
-          python cloud_job.py --force 2>&1 | tee -a ci-report/dryrun.txt
+          T0=$(date +%s)
+          python update_daily.py --force 2>&1 | tee -a ci-report/dryrun.txt
+          T1=$(date +%s)
+          echo "" | tee -a ci-report/dryrun.txt
+          echo ">>> 抓取+计算总耗时: $((T1-T0)) 秒" | tee -a ci-report/dryrun.txt
 
       - name: 数据自检
         run: |
           python - <<'PY' 2>&1 | tee -a ci-report/dryrun.txt
-          import config, store
+          import store
           conn = store.connect()
           rows = store.read_rows(conn)
           conn.close()
           print("总交易日:", len(rows))
           for r in rows[-3:]:
-              print(f"  {r['date']} TRIN={r['trin_pct']:.2f}% 上涨占比={r['ratio']:.2f}% "
+              print(f"  {r['date']} TRIN={r['trin_pct']:.2f}% 上涨占比={r['up_ratio']:.2f}% "
                     f"涨{r['up_cnt']}/跌{r['down_cnt']}/平{r['flat_cnt']} 总数{r['total_cnt']}")
           last = rows[-1]
-          assert last["total_cnt"] > 4000, f"样本家数异常: {last['total_cnt']}"
-          print("✅ 样本家数正常")
+          assert last["total_cnt"] > 4500, f"样本家数异常: {last['total_cnt']}"
+          print("✅ 样本家数正常（>4500）")
           PY
+
+      - name: 生成简报并推送
+        env:
+          BARK_KEY: ${{ secrets.BARK_KEY }}
+          SERVERCHAN_KEY: ${{ secrets.SERVERCHAN_KEY }}
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+        run: |
+          set -o pipefail
+          python cloud_job.py --force 2>&1 | tee -a ci-report/dryrun.txt || true
 
       - name: 生成静态看板
         run: python export_static.py 2>&1 | tee -a ci-report/dryrun.txt
@@ -62,10 +74,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A data docs
           git add -f ci-report/dryrun.txt
-          if git diff --cached --quiet; then
-            echo "数据无变化（已是最新），仅提交演练报告"
-            git add -f ci-report/dryrun.txt
-          fi
           if git diff --cached --quiet; then
             echo "无变化"
           else
