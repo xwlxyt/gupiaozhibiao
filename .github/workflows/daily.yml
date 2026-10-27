@@ -17,6 +17,8 @@ jobs:
   update:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      TZ: Asia/Shanghai          # 让脚本里的"今天"始终是北京日期，不受 runner 的 UTC 影响
     steps:
       - name: 检出代码
         uses: actions/checkout@v4

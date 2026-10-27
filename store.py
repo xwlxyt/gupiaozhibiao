@@ -186,10 +186,12 @@ def add_derived(rows):
 def export(conn):
     """导出 CSV 与 Web 用 JSON。"""
     rows = add_derived(read_rows(conn))
+    # 注意：必须与下方 compact 的实际写入顺序严格一致，否则按位置解析会错位
     cols = [
         "date", "up_cnt", "down_cnt", "flat_cnt", "total_cnt",
-        "up_amt", "down_amt", "flat_amt", "limit_up", "limit_down",
-        "trin_pct", "up_ratio", "trin_ma10", "ratio_ma5", "idx_close",
+        "up_amt", "down_amt", "flat_amt",
+        "trin_pct", "up_ratio", "idx_close", "limit_up", "limit_down",
+        "trin_ma10", "ratio_ma5",
     ]
 
     # CSV（金额单位：亿元）
