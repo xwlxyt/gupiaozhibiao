@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """全局配置"""
+import os
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent
@@ -29,3 +30,6 @@ TAIL_BARS = 30
 
 HOST = "127.0.0.1"
 PORT = 8730
+
+# 线上看板地址（推送消息里附带的链接）。换仓库/自定义域名时改这里，或设环境变量 DASHBOARD_URL
+DASHBOARD_URL = os.environ.get("DASHBOARD_URL", "https://xwlxyt.github.io/gupiaozhibiao/")

@@ -4,7 +4,15 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>A股市场宽度 · TRIN 与涨跌分布</title>
-<script src="/vendor/echarts.min.js"></script>
+<!-- 必须用相对路径：GitHub Pages 部署在 /仓库名/ 子目录下，
+     绝对路径 /vendor/... 会指向域名根目录而 404，导致 echarts 未定义、整页脚本中断。 -->
+<script src="./vendor/echarts.min.js"></script>
+<script>
+/* 万一本地 vendor 缺失，退回公共 CDN，避免整页白屏 */
+if (typeof echarts === 'undefined') {
+  document.write('<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"><\/script>');
+}
+</script>
 <style>
   :root{
     --bg:#f5f6f8; --card:#ffffff; --line:#e6e8ec; --text:#1d2129; --sub:#6b7280;
@@ -226,7 +234,14 @@ function renderKpis(row, rank) {
 }
 
 /* ------------------------------------------------------------ 图表 */
-const chart = echarts.init($('#chart'), null, { renderer: 'canvas' });
+/* 图表库加载失败时不能让整个脚本崩掉（否则表格、查询、按钮都会失灵） */
+const chart = (typeof echarts !== 'undefined')
+  ? echarts.init($('#chart'), null, { renderer: 'canvas' })
+  : null;
+if (!chart) {
+  $('#chart').innerHTML = '<div style="padding:40px 20px;text-align:center;color:#6b7280;font-size:13px;line-height:1.9">'
+    + '图表库未能加载，图形暂不显示。<br>下方数据表与日期查询仍可正常使用。</div>';
+}
 const C = { up: '#d93a3a', down: '#159a6b', blue: '#2f6feb', purple: '#6b5bd2', orange: '#e8963c' };
 
 /* TRIN 是比值，极端日（如千股涨停）会飙到 2000%+，线性坐标会被压扁：
@@ -326,6 +341,7 @@ function buildOption(rows, zoom) {
 }
 
 function renderChart() {
+  if (!chart) return;          // 图表库缺失时静默跳过，不影响其余功能
   const rows = state.filter;
   if (!rows.length) return;
   const n = state.zoomCount || 0;
@@ -365,19 +381,32 @@ function renderTable(rows, highlight) {
 }
 
 /* ------------------------------------------------------------ 数据加载 */
-/* 两种模式：本机服务有 /api 接口；GitHub Pages 等静态托管则读 ./data/series.json */
+/* 两种模式：本机服务有 /api 接口；GitHub Pages 等静态托管则读 ./data/series.json。
+   注意所有接口都用相对路径（api/xxx），否则 Pages 子目录下会请求到域名根目录而 404。 */
 async function detectMode() {
   if (state.mode) return state.mode;
-  try {
-    const r = await fetch('/api/meta', { cache: 'no-store' });
-    state.mode = r.ok ? 'live' : 'static';
-  } catch (e) {
-    state.mode = 'static';
+  const host = location.hostname;
+  const isLocal = /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[?::1\]?)$/.test(host)
+    || /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host);
+  if (isLocal) {
+    try {
+      const r = await fetch('api/meta', { cache: 'no-store' });
+      state.mode = r.ok ? 'live' : 'static';
+    } catch (e) {
+      state.mode = 'static';
+    }
+  } else {
+    state.mode = 'static';      // 线上静态托管，不去碰 /api，避免无用的 404
   }
   if (state.mode === 'static') {
     document.body.classList.add('static-mode');
     const b = $('#btnRefresh');
-    if (b) b.style.display = 'none';
+    if (b) {
+      // 静态页面没有后端可以"更新"，把按钮改成明确的数据说明入口，
+      // 而不是留一个点了毫无反应的按钮。
+      b.textContent = '数据说明';
+      b.classList.remove('disabled');
+    }
   }
   return state.mode;
 }
@@ -403,8 +432,8 @@ async function loadAll() {
   const mode = await detectMode();
   let meta, series;
   if (mode === 'live') {
-    meta = await (await fetch('/api/meta')).json();
-    series = await (await fetch('/api/series')).json();
+    meta = await (await fetch('api/meta')).json();
+    series = await (await fetch('api/series')).json();
   } else {
     // 加时间戳：GitHub Pages 的 CDN 会缓存 json，仅靠 no-store 不保证回源
     series = await (await fetch(`./data/series.json?_=${Date.now()}`, { cache: 'no-store' })).json();
@@ -418,7 +447,7 @@ async function loadAll() {
 
   $('#subline').innerHTML = `统计区间 <b>${state.meta.first || '—'}</b> ~ <b>${state.meta.last || '—'}</b>
      · 共 <b>${state.meta.count || 0}</b> 个交易日 · 覆盖 <b>${latest ? latest.total : 0}</b> 只沪深A股
-     · 更新于 ${state.meta.updated_at || '—'}`;
+     · 更新于 ${state.meta.updated_at || '—'}${state.mode === 'static' ? ' · <b>静态快照</b>' : ''}`;
   $('#footRange').textContent = `${state.meta.first || '—'} ~ ${state.meta.last || '—'}`;
   $('#qDate').value = state.meta.last || '';
   $('#qStart').value = state.rows[Math.max(0, state.rows.length - 60)]?.date || '';
@@ -431,7 +460,7 @@ async function loadAll() {
   try {
     const d = state.mode === 'static'
       ? localDay(state.meta.last)
-      : await (await fetch('/api/day?date=' + state.meta.last)).json();
+      : await (await fetch('api/day?date=' + state.meta.last)).json();
     if (d.ok) renderKpis(d.row, d.rank);
   } catch (e) { /* ignore */ }
 }
@@ -470,7 +499,7 @@ async function queryDay(day) {
   const mode = await detectMode();
   const res = mode === 'static'
     ? localDay(day)
-    : await (await fetch('/api/day?date=' + day)).json();
+    : await (await fetch('api/day?date=' + day)).json();
   const box = $('#qres');
   if (!res.ok) { box.classList.remove('show'); toast(res.error || '未找到数据'); return; }
   state.selected = day;
@@ -511,7 +540,7 @@ $('#btnRange').onclick = async () => {
   const mode = await detectMode();
   const res = mode === 'static'
     ? { rows: state.rows.filter(r => r.date >= s && r.date <= e) }
-    : await (await fetch(`/api/series?start=${s}&end=${e}`)).json();
+    : await (await fetch(`api/series?start=${s}&end=${e}`)).json();
   if (!res.rows.length) return toast('该区间没有数据');
   state.filter = res.rows;
   renderChart(); renderTable(res.rows, state.selected);
@@ -536,17 +565,25 @@ $('#btnCsv').onclick = () => {
 };
 
 $('#btnRefresh').onclick = async () => {
-  if (state.mode === 'static') {
-    return toast('这是每日自动更新的静态页面，数据由云端定时刷新');
-  }
   const btn = $('#btnRefresh');
+  if (state.mode === 'static') {
+    // 线上是静态快照，没有后端可调用；明确告诉用户数据来自哪里、何时更新
+    const m = state.meta || {};
+    toast(`静态快照：最新交易日 ${m.last || '—'}，每日 16:00 后由云端自动更新`);
+    return;
+  }
   btn.disabled = true; btn.textContent = '正在更新…';
-  const res = await (await fetch('/api/refresh', { method: 'POST' })).json();
+  let res;
+  try {
+    res = await (await fetch('api/refresh', { method: 'POST' })).json();
+  } catch (e) {
+    toast('本机服务未响应，更新失败'); btn.disabled = false; btn.textContent = '更新数据'; return;
+  }
   if (!res.ok) { toast(res.error || '更新失败'); btn.disabled = false; btn.textContent = '更新数据'; return; }
   toast('已开始抓取最新行情，约需 1~3 分钟');
   clearInterval(state.refreshTimer);
   state.refreshTimer = setInterval(async () => {
-    const st = await (await fetch('/api/status')).json();
+    const st = await (await fetch('api/status')).json();
     if (!st.refreshing) {
       clearInterval(state.refreshTimer);
       btn.disabled = false; btn.textContent = '更新数据';
@@ -556,7 +593,7 @@ $('#btnRefresh').onclick = async () => {
   }, 4000);
 };
 
-window.addEventListener('resize', () => chart.resize());
+window.addEventListener('resize', () => { if (chart) chart.resize(); });
 loadAll();
 </script>
 </body>
