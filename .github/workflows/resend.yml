@@ -1,12 +1,16 @@
 name: 重发当日简报
 
-# 手动触发：仓库 Actions 页面 → 左侧「重发当日简报」→ Run workflow
-# 用途：不重新抓行情（省时间），直接用仓库里的最新数据发一条推送，
+# 两种触发方式：
+#   1) 仓库 Actions 页面 → 左侧「重发当日简报」→ Run workflow（手机上最方便）
+#   2) 改一下 .github/resend.trigger 文件并 push（给自动化脚本用）
+# 用途：不重新抓行情，直接用仓库里的最新数据发一条推送，
 #       用来验证推送通道、或者补发当天漏掉的那条。
-# 和每日任务的区别：每日任务会先抓数据，这一步只发消息。
 
 on:
   workflow_dispatch: {}
+  push:
+    paths:
+      - ".github/resend.trigger"
 
 permissions:
   contents: read
@@ -35,4 +39,10 @@ jobs:
           python-version: "3.12"
 
       - name: 发送当日简报
-        run: python push.py
+        run: |
+          # trigger 文件被删除时（清理动作）不要发，避免重复推送
+          if [ "${{ github.event_name }}" = "push" ] && [ ! -f .github/resend.trigger ]; then
+            echo "触发文件已删除，跳过发送"
+            exit 0
+          fi
+          python push.py
