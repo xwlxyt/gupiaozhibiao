@@ -10,6 +10,7 @@
     python cloud_job.py            # 正常每日任务
     python cloud_job.py --force    # 即使已最新也推送一次
 """
+import json
 import os
 import sys
 import time
@@ -39,6 +40,26 @@ def write_summary(text):
     try:
         with open(path, "a", encoding="utf-8") as fh:
             fh.write(text.replace("\n", "  \n") + "\n")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def record(before, after, changed, skipped, results, line, seconds):
+    """把每次运行的结果落到 data/last_run.json，便于事后排查推送为什么没到。"""
+    from datetime import datetime
+    rec = {
+        "run_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "latest_before": before,
+        "latest_after": after,
+        "changed": changed,
+        "skipped": skipped,
+        "push_results": [{"channel": n, "ok": bool(ok), "msg": m} for n, ok, m in results],
+        "push_line": line,
+        "seconds": round(seconds),
+    }
+    try:
+        with open(config.DATA / "last_run.json", "w", encoding="utf-8") as fh:
+            json.dump(rec, fh, ensure_ascii=False, indent=2)
     except Exception:  # noqa: BLE001
         pass
 
@@ -74,6 +95,7 @@ def main():
         msg = f"⏭ 今日无需更新（最新交易日 {after}），未推送"
         print(msg)
         write_summary(msg)
+        record(before, after, changed, True, [], msg, time.time() - t0)
         return
 
     import notify
@@ -96,6 +118,7 @@ def main():
         line = "　".join(f"{'✅' if ok else '❌'} {name}" + ("" if ok else f"（{m}）")
                          for name, ok, m in results)
     print(line)
+    record(before, after, changed, False, results, line, time.time() - t0)
     write_summary(f"### {subject}\n\n{text}\n\n**推送**：{line}\n\n耗时 {time.time() - t0:.0f}s")
 
 

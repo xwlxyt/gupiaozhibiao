@@ -1,0 +1,49 @@
+name: 推送实测（一次性）
+
+on:
+  push:
+    paths:
+      - ".github/workflows/pushlive.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TZ: Asia/Shanghai
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 强制执行每日任务并真实推送
+        env:
+          BARK_KEY: ${{ secrets.BARK_KEY }}
+          SERVERCHAN_KEY: ${{ secrets.SERVERCHAN_KEY }}
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+        run: |
+          set -o pipefail
+          mkdir -p ci-report
+          python cloud_job.py --force 2>&1 | tee ci-report/pushlive.txt
+          echo "" | tee -a ci-report/pushlive.txt
+          echo "=== 本次运行记录 data/last_run.json ===" | tee -a ci-report/pushlive.txt
+          cat data/last_run.json 2>/dev/null | tee -a ci-report/pushlive.txt || echo "未生成" | tee -a ci-report/pushlive.txt
+
+      - name: 提交结果
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A data docs
+          git add -f ci-report/pushlive.txt
+          if git diff --cached --quiet; then
+            echo "无变化"
+          else
+            git commit -m "ci: 推送实测结果"
+            git push
+          fi
