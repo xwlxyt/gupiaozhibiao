@@ -406,7 +406,8 @@ async function loadAll() {
     meta = await (await fetch('/api/meta')).json();
     series = await (await fetch('/api/series')).json();
   } else {
-    series = await (await fetch('./data/series.json', { cache: 'no-store' })).json();
+    // 加时间戳：GitHub Pages 的 CDN 会缓存 json，仅靠 no-store 不保证回源
+    series = await (await fetch(`./data/series.json?_=${Date.now()}`, { cache: 'no-store' })).json();
     meta = { ok: true, meta: series.meta, latest: series.rows[series.rows.length - 1] };
   }
   state.rows = series.rows;
