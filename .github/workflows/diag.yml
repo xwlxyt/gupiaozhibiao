@@ -1,0 +1,96 @@
+name: 推送诊断（一次性）
+
+# 只在本文件变化时触发
+on:
+  push:
+    paths:
+      - ".github/workflows/diag.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TZ: Asia/Shanghai
+      BARK_KEY: ${{ secrets.BARK_KEY }}
+      BARK_URL: ${{ secrets.BARK_URL }}
+      SERVERCHAN_KEY: ${{ secrets.SERVERCHAN_KEY }}
+      PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 诊断推送配置
+        run: |
+          mkdir -p ci-report
+          python - <<'PY' > ci-report/push-diag.txt 2>&1
+          import json, os, subprocess, sys
+
+          KEYS = ("BARK_KEY", "BARK_URL", "SERVERCHAN_KEY", "PUSHPLUS_TOKEN")
+          vals = {k: (os.environ.get(k) or "") for k in KEYS}
+
+          def mask(s):
+              if not s:
+                  return "（空）"
+              if len(s) <= 8:
+                  return "***(长度%d)" % len(s)
+              return "%s***%s(长度%d)" % (s[:2], s[-2:], len(s))
+
+          print("=== 1. Secrets 注入情况 ===")
+          for k in KEYS:
+              print(f"{k}: {'已注入' if vals[k] else '未注入'} → {mask(vals[k])}")
+
+          print()
+          print("=== 2. push.py 配置识别结果 ===")
+          try:
+              import push
+              conf = push.load_conf()
+              for k in ("bark_key", "bark_url", "serverchan_key", "pushplus_token"):
+                  v = conf.get(k) or ""
+                  shown = v if k == "bark_url" else mask(v)
+                  print(f"{k}: {shown or '（空）'}")
+              configured = [k for k in ("bark_key", "serverchan_key", "pushplus_token") if conf.get(k)]
+              print("识别到的可用通道:", configured or "无")
+          except Exception as exc:
+              print("加载 push.py 失败:", exc)
+
+          print()
+          print("=== 3. 实际发送一条测试推送 ===")
+          out = subprocess.run([sys.executable, "push.py", "--test"],
+                               capture_output=True, text=True, timeout=120)
+          text = (out.stdout or "") + (out.stderr or "")
+          for k in KEYS:
+              if vals[k]:
+                  text = text.replace(vals[k], mask(vals[k]))
+          print("退出码:", out.returncode)
+          print(text.strip() or "（无输出）")
+
+          print()
+          print("=== 4. 结论 ===")
+          if not any(vals[k] for k in ("BARK_KEY", "SERVERCHAN_KEY", "PUSHPLUS_TOKEN")):
+              print("❌ 三个推送密钥一个都没注入 → Secrets 没配，或名字不是 BARK_KEY / SERVERCHAN_KEY / PUSHPLUS_TOKEN")
+          elif out.returncode == 0:
+              print("✅ 测试推送已发出，检查手机是否收到")
+          else:
+              print("❌ 配置有值但发送失败，看上面第 3 段的具体报错")
+          PY
+          cat ci-report/push-diag.txt
+
+      - name: 提交诊断结果
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f ci-report/push-diag.txt
+          if git diff --cached --quiet; then
+            echo "无变化"
+          else
+            git commit -m "ci: 推送诊断结果"
+            git push
+          fi
