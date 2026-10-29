@@ -1,0 +1,19 @@
+=== 1. Secrets 注入情况 ===
+BARK_KEY: 未注入 → （空）
+BARK_URL: 未注入 → （空）
+SERVERCHAN_KEY: 已注入 → SC***Cx(长度34)
+PUSHPLUS_TOKEN: 未注入 → （空）
+
+=== 2. push.py 配置识别结果 ===
+bark_key: （空）
+bark_url: https://api.day.app
+serverchan_key: SC***Cx(长度34)
+pushplus_token: （空）
+识别到的可用通道: ['serverchan_key']
+
+=== 3. 实际发送一条测试推送 ===
+退出码: 0
+✅ Server酱: ok
+
+=== 4. 结论 ===
+✅ 测试推送已发出，检查手机是否收到
