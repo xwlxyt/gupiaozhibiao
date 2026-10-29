@@ -50,3 +50,28 @@ jobs:
             git commit -m "chore: 更新数据 $(date -u +%Y-%m-%d)"
             git push
           fi
+
+      # 放在最后：数据已安全提交，再判断推送是否成功，失败则标红，不再静默放过
+      - name: 校验推送结果
+        run: |
+          python - <<'PY'
+          import json, pathlib, sys
+          p = pathlib.Path("data/last_run.json")
+          if not p.exists():
+              print("⚠️ 没有 last_run.json，无法判断推送结果"); sys.exit(0)
+          d = json.loads(p.read_text(encoding="utf-8"))
+          print("最近一次运行:", json.dumps(d, ensure_ascii=False))
+          if d.get("skipped"):
+              print("今日无需更新（非交易日或数据已是最新），按设计不推送 —— 正常")
+              sys.exit(0)
+          res = d.get("push_results") or []
+          if not res:
+              print("::error::没有任何可用的推送通道，请检查仓库 Secrets 是否配置")
+              sys.exit(1)
+          bad = [r for r in res if not r.get("ok")]
+          if bad:
+              for r in bad:
+                  print(f"::error::推送失败 [{r['channel']}] {r['msg']}")
+              sys.exit(1)
+          print("✅ 推送成功:", "、".join(r["channel"] for r in res))
+          PY
