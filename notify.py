@@ -83,6 +83,9 @@ def build(date=None):
         idx_chg = (cur["idx_close"] / prev["idx_close"] - 1) * 100
 
     amt = (cur["up_amt"] + cur["down_amt"] + cur["flat_amt"]) / 1e8
+    # 链接带日期参数：微信/企业微信内置浏览器对 HTML 有缓存，
+    # 每天换一个 URL 可以确保点开就是最新页面，不会看到旧快照。
+    board_url = f"{config.DASHBOARD_URL}?d={cur['date']}"
     text = f"""【A股市场宽度】{cur['date']}
 
 TRIN：{'—' if cur['trin_pct'] is None else f"{cur['trin_pct']:.2f}%"}（10日均 {'—' if cur['trin_ma10'] is None else f"{cur['trin_ma10']:.2f}%"}，历史分位 {trin_rank}%）
@@ -93,7 +96,7 @@ TRIN：{'—' if cur['trin_pct'] is None else f"{cur['trin_pct']:.2f}%"}（10日
 上证指数：{'—' if cur['idx_close'] is None else f"{cur['idx_close']:.2f}"}{'' if idx_chg is None else f"（{idx_chg:+.2f}%）"}
 
 解读：{verdict(cur['trin_pct'], cur['up_ratio'])}
-看板：{config.DASHBOARD_URL}
+看板：{board_url}
 （口径：沪深两市 A 股，剔除停牌与新股首日；TRIN =（涨家数/跌家数）÷（涨成交额/跌成交额）×100%）"""
 
     html = f"""<div style="font-family:system-ui,'Microsoft YaHei',sans-serif;max-width:620px">
@@ -111,7 +114,7 @@ TRIN：{'—' if cur['trin_pct'] is None else f"{cur['trin_pct']:.2f}%"}（10日
 <td style="color:{'#d93a3a' if (idx_chg or 0) >= 0 else '#159a6b'}">{'' if idx_chg is None else f"{idx_chg:+.2f}%"}</td></tr>
 </table>
 <p style="color:#444;line-height:1.7;font-size:13.5px;margin-top:12px">解读：{verdict(cur['trin_pct'], cur['up_ratio'])}</p>
-<p style="margin:16px 0 6px"><a href="{config.DASHBOARD_URL}" style="display:inline-block;padding:9px 16px;background:#2f6feb;color:#fff;text-decoration:none;border-radius:6px;font-size:13.5px">打开看板 →</a></p>
+<p style="margin:16px 0 6px"><a href="{board_url}" style="display:inline-block;padding:9px 16px;background:#2f6feb;color:#fff;text-decoration:none;border-radius:6px;font-size:13.5px">打开看板 →</a></p>
 <p style="color:#9aa0a6;font-size:12px">口径：沪深两市 A 股，剔除当日停牌与新股上市首日；TRIN =（上涨家数/下跌家数）÷（上涨成交额/下跌成交额）×100%。仅作研究参考。</p>
 </div>"""
 
