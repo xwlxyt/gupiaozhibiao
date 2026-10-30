@@ -104,11 +104,18 @@ def _today_str():
     return datetime.now().strftime("%Y-%m-%d")
 
 
-def fetch_kline(secid, end_date=None, count=None):
-    """取一段日线（以 end_date 为终点向前 count 根）。返回按日期升序的列表。"""
+def fetch_kline(secid, end_date=None, count=None, bust=False):
+    """取一段日线（以 end_date 为终点向前 count 根）。返回按日期升序的列表。
+
+    bust=True 时在 URL 尾部追加随机参数：数据源前面有 CDN，境外节点（如 GitHub
+    Actions）偶尔会返回缓存了好几小时的旧响应，加个无意义参数即可改变缓存键、强制回源。
+    """
     end_date = end_date or _today_str()
     count = count or config.MAX_BARS
-    raw = _get(_KLINE.format(secid=secid, start="1990-01-01", end=end_date, count=count))
+    url = _KLINE.format(secid=secid, start="1990-01-01", end=end_date, count=count)
+    if bust:
+        url += f"&_r={random.randint(100000, 999999)}"
+    raw = _get(url)
     payload = raw.split("=", 1)[1] if raw.startswith("k=") else raw
     obj = json.loads(payload)
     node = (obj.get("data") or {}).get(secid) or {}

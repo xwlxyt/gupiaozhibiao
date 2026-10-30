@@ -27,9 +27,9 @@ def log(msg):
         fh.write(line + "\n")
 
 
-def fetch_tail(stock, count):
+def fetch_tail(stock, count, bust=False):
     try:
-        return stock, qq.fetch_kline(stock["secid"], count=count), None
+        return stock, qq.fetch_kline(stock["secid"], count=count, bust=bust), None
     except Exception as exc:  # noqa: BLE001
         return stock, None, str(exc)
 
@@ -86,8 +86,9 @@ def main():
     log(f"股票列表 {len(stocks)} 只")
 
     agg = {}
+    bars_map = {}       # secid -> bars；先全部收下，最后统一聚合，补抓时可直接覆盖
     failed = []
-    done = 0
+    last_bar = {}       # secid -> 该股最后一根 K 线的日期
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         futures = [pool.submit(fetch_tail, s, count) for s in stocks]
         for fut in as_completed(futures):
@@ -95,8 +96,46 @@ def main():
             if err or not bars:
                 failed.append(stock["secid"])
                 continue
-            store.aggregate([(stock["secid"], name_map.get(stock["secid"], ""), bars)], agg)
-            done += 1
+            bars_map[stock["secid"]] = bars
+            last_bar[stock["secid"]] = bars[-1][0]
+
+    if not bars_map:
+        log("!! 未取到任何数据")
+        sys.exit(1)
+
+    # ---- 新鲜度校验：有多少只真的更新到了目标交易日 ----
+    # 停牌股本来就没有当日 K 线，属于正常口径；
+    # 但如果是大面积缺失，说明数据源返回了缓存旧值（境外节点尤其容易命中），必须拦截。
+    stale = [s for s in stocks
+             if s["secid"] in bars_map and last_bar.get(s["secid"]) != trade_date]
+    ratio = len(stale) / max(1, len(stocks))
+    log(f"{trade_date} 有数据 {len(bars_map) - len(stale)} 只 / 抓取成功 {len(bars_map)} 只"
+        f"（未更新到当日 {len(stale)} 只，占 {ratio:.1%}）")
+
+    if ratio > config.STALE_RATIO_MAX:
+        log(f"!! {ratio:.1%} 的个股没有 {trade_date} 的 K 线，疑似数据源返回缓存旧值，开始补抓…")
+        fixed = 0
+        with ThreadPoolExecutor(max_workers=config.RETRY_WORKERS) as pool:
+            futs = [pool.submit(fetch_tail, s, count, True) for s in stale]
+            for fut in as_completed(futs):
+                stock, bars, err = fut.result()
+                if err or not bars or bars[-1][0] != trade_date:
+                    continue
+                bars_map[stock["secid"]] = bars
+                last_bar[stock["secid"]] = bars[-1][0]
+                fixed += 1
+        ratio = (len(stale) - fixed) / max(1, len(stocks))
+        log(f"补抓完成：{fixed} 只已更新到当日，仍缺 {len(stale) - fixed} 只（占 {ratio:.1%}）")
+
+    if ratio > config.STALE_RATIO_MAX:
+        log(f"!! 补抓后仍有 {ratio:.1%} 的个股缺少 {trade_date} 数据，本次抓取不完整，"
+            f"放弃写入以免污染数据（库里保留上一次的正确值），请稍后重跑")
+        sys.exit(1)
+
+    # 统一聚合：bars_map 已是补抓后的最终结果，不会重复累加
+    for secid, bars in bars_map.items():
+        store.aggregate([(secid, name_map.get(secid, ""), bars)], agg)
+    done = len(bars_map)
 
     if not agg:
         log("!! 未取到任何数据")
@@ -112,19 +151,35 @@ def main():
     # 只保留 cutoff 及之后的数据：窗口前几天的统计不完整，绝不能覆盖库里的历史值
     agg = {d: v for d, v in agg.items() if d >= cutoff}
 
-    # 安全阀：若某天样本家数明显低于库里已有值（说明抓取大面积失败），回填旧数据
+    # 安全阀：若某天样本家数明显低于参照值（说明抓取大面积失败），不采信当天数据
+    # 参照值优先用库里该日自己的值；库里没有这一天（全新日期）则用最近一个有效交易日，
+    # —— 否则新日期永远没有参照，残缺数据会直接写进去（2026-10-30 就这么写坏过）
     old_rows = {r["date"]: r for r in existing}
-    restored = []
-    for d in list(agg):
+    ref_total = None
+    for r in reversed(existing):
+        if r["total_cnt"]:
+            ref_total = r["total_cnt"]
+            break
+
+    restored, dropped = [], []
+    for d in sorted(list(agg)):
         old = old_rows.get(d)
-        if not old:
-            continue
         t = agg[d]["up"] + agg[d]["down"] + agg[d]["flat"]
-        if old["total_cnt"] and t < old["total_cnt"] * 0.85:
-            agg[d] = bucket_from_row(old)
-            restored.append(d)
+        ref = (old["total_cnt"] if old and old["total_cnt"] else ref_total)
+        if ref and t < ref * 0.92:
+            if old:
+                agg[d] = bucket_from_row(old)
+                restored.append(d)
+            else:
+                agg.pop(d, None)
+                dropped.append((d, t, ref))
     if restored:
         log(f"!! 以下日期样本异常偏少，已保留原值：{restored[:8]}")
+    for d, t, ref in dropped:
+        log(f"!! {d} 样本仅 {t} 只（参照 {ref} 只），已丢弃")
+    if any(d == trade_date for d, _, _ in dropped):
+        log("!! 目标交易日样本残缺，本次不写库、不推送；稍后重跑会自动补齐")
+        sys.exit(1)
 
     n = store.save_buckets(conn, agg, since=cutoff)
 
