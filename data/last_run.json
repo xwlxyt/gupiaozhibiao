@@ -1,7 +1,7 @@
 {
-  "run_at": "2026-11-20 18:37:59",
-  "latest_before": "2026-11-19",
-  "latest_after": "2026-11-20",
+  "run_at": "2026-11-23 17:23:18",
+  "latest_before": "2026-11-20",
+  "latest_after": "2026-11-23",
   "changed": true,
   "skipped": false,
   "push_results": [
@@ -12,5 +12,5 @@
     }
   ],
   "push_line": "✅ Server酱",
-  "seconds": 614
+  "seconds": 783
 }
